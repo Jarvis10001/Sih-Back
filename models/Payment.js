@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const mongoosePaginate = require('mongoose-paginate-v2');
 
 const paymentSchema = new mongoose.Schema({
     userId: {
@@ -58,6 +59,71 @@ const paymentSchema = new mongoose.Schema({
     razorpayResponse: {
         type: mongoose.Schema.Types.Mixed // Store complete Razorpay response
     },
+    
+    // Complete transaction details for audit and retrieval
+    transactionDetails: {
+        // Original order creation details
+        orderCreation: {
+            timestamp: { type: Date },
+            razorpayOrderId: { type: String },
+            orderAmount: { type: Number },
+            orderCurrency: { type: String },
+            orderStatus: { type: String },
+            orderReceipt: { type: String }
+        },
+        
+        // Payment gateway interaction details
+        paymentAttempts: [{
+            attemptNumber: { type: Number },
+            timestamp: { type: Date },
+            paymentId: { type: String },
+            method: { type: String }, // card, netbanking, upi, etc.
+            bank: { type: String },
+            wallet: { type: String },
+            vpa: { type: String }, // for UPI
+            cardType: { type: String }, // credit, debit
+            cardNetwork: { type: String }, // visa, mastercard, etc.
+            status: { type: String }, // attempted, failed, success
+            errorCode: { type: String },
+            errorDescription: { type: String },
+            gatewayResponse: { type: mongoose.Schema.Types.Mixed }
+        }],
+        
+        // Payment completion details
+        paymentCompletion: {
+            timestamp: { type: Date },
+            razorpayPaymentId: { type: String },
+            razorpaySignature: { type: String },
+            verificationStatus: { type: String },
+            verificationTimestamp: { type: Date },
+            finalAmount: { type: Number },
+            fees: { type: Number }, // gateway fees
+            tax: { type: Number }, // tax on fees
+            settlementCurrency: { type: String },
+            settlementAmount: { type: Number }
+        }
+    },
+    
+    // Device and session information for security
+    sessionInfo: {
+        ipAddress: { type: String },
+        userAgent: { type: String },
+        deviceType: { type: String }, // mobile, desktop, tablet
+        browser: { type: String },
+        platform: { type: String }, // windows, android, ios, etc.
+        screenResolution: { type: String },
+        timezone: { type: String },
+        language: { type: String }
+    },
+    
+    // Status change audit trail
+    statusHistory: [{
+        status: { type: String },
+        timestamp: { type: Date },
+        reason: { type: String },
+        changedBy: { type: String }, // system, admin, user
+        metadata: { type: mongoose.Schema.Types.Mixed }
+    }],
     
     // Fee breakdown
     feeBreakdown: {
@@ -126,6 +192,9 @@ paymentSchema.index({ admissionId: 1, status: 1 });
 paymentSchema.index({ createdAt: -1 });
 paymentSchema.index({ paidAt: -1 });
 
+// Add pagination plugin
+paymentSchema.plugin(mongoosePaginate);
+
 // Virtual for net amount (after refund)
 paymentSchema.virtual('netAmount').get(function() {
     return this.amount - this.refundAmount;
@@ -141,6 +210,21 @@ paymentSchema.virtual('receiptUrl').get(function() {
 
 // Pre-save middleware
 paymentSchema.pre('save', function(next) {
+    // Track status changes in history
+    if (this.isModified('status')) {
+        if (!this.statusHistory) {
+            this.statusHistory = [];
+        }
+        
+        this.statusHistory.push({
+            status: this.status,
+            timestamp: new Date(),
+            reason: this.statusChangeReason || 'Status updated',
+            changedBy: this.statusChangedBy || 'system',
+            metadata: this.statusChangeMetadata || {}
+        });
+    }
+    
     // Auto-calculate fee breakdown if not provided
     if (this.isNew && !this.feeBreakdown.admissionFee && this.amount) {
         // Default breakdown if not specified
@@ -151,6 +235,31 @@ paymentSchema.pre('save', function(next) {
             otherFees: 0
         };
     }
+    
+    // Initialize transaction details if new
+    if (this.isNew) {
+        this.transactionDetails = {
+            orderCreation: {
+                timestamp: new Date(),
+                orderAmount: this.amount,
+                orderCurrency: this.currency || 'INR'
+            },
+            paymentAttempts: [],
+            paymentCompletion: {}
+        };
+        
+        // Initialize status history for new payments
+        if (!this.statusHistory) {
+            this.statusHistory = [{
+                status: this.status,
+                timestamp: new Date(),
+                reason: 'Payment record created',
+                changedBy: 'system',
+                metadata: { created: true }
+            }];
+        }
+    }
+    
     next();
 });
 
@@ -165,6 +274,62 @@ paymentSchema.methods.canRefund = function() {
            this.amount > this.refundAmount;
 };
 
+paymentSchema.methods.addPaymentAttempt = function(attemptData) {
+    if (!this.transactionDetails.paymentAttempts) {
+        this.transactionDetails.paymentAttempts = [];
+    }
+    
+    const attemptNumber = this.transactionDetails.paymentAttempts.length + 1;
+    this.transactionDetails.paymentAttempts.push({
+        attemptNumber,
+        timestamp: new Date(),
+        ...attemptData
+    });
+    
+    return this.save();
+};
+
+paymentSchema.methods.updateOrderCreation = function(orderData) {
+    this.transactionDetails.orderCreation = {
+        ...this.transactionDetails.orderCreation,
+        timestamp: new Date(),
+        ...orderData
+    };
+    return this.save();
+};
+
+paymentSchema.methods.completePayment = function(completionData) {
+    this.transactionDetails.paymentCompletion = {
+        timestamp: new Date(),
+        verificationTimestamp: new Date(),
+        ...completionData
+    };
+    
+    this.status = 'completed';
+    this.paidAt = new Date();
+    this.statusChangeReason = 'Payment completed successfully';
+    this.statusChangedBy = 'system';
+    
+    return this.save();
+};
+
+paymentSchema.methods.setSessionInfo = function(sessionData) {
+    this.sessionInfo = {
+        ...this.sessionInfo,
+        ...sessionData,
+        timestamp: new Date()
+    };
+    return this.save();
+};
+
+paymentSchema.methods.changeStatus = function(newStatus, reason, changedBy = 'system', metadata = {}) {
+    this.status = newStatus;
+    this.statusChangeReason = reason;
+    this.statusChangedBy = changedBy;
+    this.statusChangeMetadata = metadata;
+    return this.save();
+};
+
 paymentSchema.methods.getReceiptData = function() {
     return {
         id: this._id,
@@ -176,7 +341,24 @@ paymentSchema.methods.getReceiptData = function() {
         paidAt: this.paidAt,
         feeBreakdown: this.feeBreakdown,
         refundAmount: this.refundAmount,
-        netAmount: this.netAmount
+        netAmount: this.netAmount,
+        transactionDetails: this.transactionDetails,
+        statusHistory: this.statusHistory
+    };
+};
+
+paymentSchema.methods.getTransactionSummary = function() {
+    return {
+        paymentId: this._id,
+        orderId: this.orderId,
+        razorpayPaymentId: this.paymentId,
+        amount: this.amount,
+        status: this.status,
+        paymentMethod: this.transactionDetails?.paymentCompletion?.method || 'unknown',
+        createdAt: this.createdAt,
+        completedAt: this.paidAt,
+        attempts: this.transactionDetails?.paymentAttempts?.length || 0,
+        lastAttempt: this.transactionDetails?.paymentAttempts?.slice(-1)[0] || null
     };
 };
 

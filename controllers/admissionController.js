@@ -62,11 +62,11 @@ const submitAdmission = async (req, res) => {
       annualIncome
     } = req.body;
 
-    // Validate required fields
+    // Validate required fields (using the field names that come from frontend)
     if (!name || !fatherName || !email || !phoneNumber || !dateOfBirth) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide all required fields'
+        message: 'Please provide all required fields: name, fatherName, email, phoneNumber, dateOfBirth'
       });
     }
 
@@ -86,7 +86,7 @@ const submitAdmission = async (req, res) => {
       });
     }
 
-    // Create admission record
+    // Create admission record with correct schema structure
     const admissionData = {
       userId,
       personalInfo: {
@@ -95,42 +95,39 @@ const submitAdmission = async (req, res) => {
         motherName,
         gender,
         dateOfBirth: new Date(dateOfBirth),
-        nationality,
-        religion,
-        caste,
-        category,
-        phoneNumber,
+        mobileNo: phoneNumber,  // schema expects mobileNo, not phoneNumber
+        parentsMobileNo: emergencyContact,  // using emergencyContact as parentsMobileNo
         email,
-        aadharNumber
+        aadharNo: aadharNumber,  // schema expects aadharNo, not aadharNumber
+        nationality,
+        religion
       },
       addressInfo: {
-        permanentAddress,
-        currentAddress,
-        pincode,
+        address: permanentAddress,  // schema expects address, not permanentAddress
+        city,
         state,
-        city
+        pincode
       },
-      educationalInfo: {
-        tenthBoard,
-        tenthYear,
-        tenthPercentage: parseFloat(tenthPercentage),
-        twelfthBoard,
-        twelfthYear,
-        twelfthPercentage: parseFloat(twelfthPercentage),
-        jeeRank: jeeRank ? parseInt(jeeRank) : null,
-        jeeScore: jeeScore ? parseFloat(jeeScore) : null
+      academicInfo: {
+        course: preferredCourse,  // schema expects course, not preferredCourse
+        branch: preferredBranch,  // schema expects branch, not preferredBranch
+        tenth: {
+          board: tenthBoard,
+          percentage: parseFloat(tenthPercentage),
+          yearOfPassing: parseInt(tenthYear)
+        },
+        twelfth: {
+          board: twelfthBoard,
+          percentage: parseFloat(twelfthPercentage),
+          yearOfPassing: parseInt(twelfthYear)
+        },
+        jee: {
+          rank: jeeRank ? parseInt(jeeRank) : null,
+          score: jeeScore ? parseFloat(jeeScore) : null
+        }
       },
-      courseDetails: {
-        preferredCourse,
-        preferredBranch
-      },
-      additionalInfo: {
-        hostelRequired: hostelRequired === 'true',
-        transportRequired: transportRequired === 'true',
-        medicalInfo,
-        emergencyContact,
-        guardianOccupation,
-        annualIncome: annualIncome ? parseFloat(annualIncome) : null
+      categoryInfo: {
+        category
       },
       documents,
       status: 'submitted',
