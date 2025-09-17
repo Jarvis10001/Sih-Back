@@ -23,6 +23,8 @@ const adminRoutes = require('./routes/admin');
 const teacherRoutes = require('./routes/teacher');
 const attendanceRoutes = require('./routes/attendance');
 const clerkRoutes = require('./routes/clerk');
+const chatbotRoutes = require('./routes/chatbotRoutes'); // ✅ Chatbot route
+console.log('chatbotRoutes:', chatbotRoutes);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -32,10 +34,13 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Attach chatbot route
+app.use('/api/chat', chatbotRoutes);
+
 // Custom middleware
 app.use(logger);
 
-// Routes
+// Default route
 app.get('/', (req, res) => {
   res.json({ 
     success: true,
@@ -49,6 +54,7 @@ app.get('/', (req, res) => {
   });
 });
 
+// Health check
 app.get('/api/health', (req, res) => {
   res.json({ 
     success: true,
@@ -61,34 +67,15 @@ app.get('/api/health', (req, res) => {
 });
 
 // API Routes
-// Authentication routes
 app.use('/api/auth', authRoutes);
-
-// Admission routes
 app.use('/api/admission', admissionRoutes);
-
-// Payment routes
 app.use('/api/payment', paymentRoutes);
-
-// Admin routes
 app.use('/api/admin', adminRoutes);
-
-// Teacher routes
 app.use('/api/teacher', teacherRoutes);
-
-// Attendance routes
 app.use('/api/attendance', attendanceRoutes);
-
-// Clerk routes
 app.use('/api/clerk', clerkRoutes);
-
-// Legacy in-memory users (for backward compatibility)
-app.use('/api/users/legacy', usersRoutes);
-
-// MongoDB users (main routes)
-app.use('/api/users', usersMongoRoutes);
-
-// Student routes
+app.use('/api/users/legacy', usersRoutes); // Legacy in-memory users
+app.use('/api/users', usersMongoRoutes); // MongoDB users (main routes)
 app.use('/api/students', studentsRoutes);
 
 // Sample data route (for testing)
@@ -122,6 +109,7 @@ const startServer = async () => {
       console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🌐 Health check: http://localhost:${PORT}/api/health`);
       console.log(`👥 Users API: http://localhost:${PORT}/api/users`);
+      console.log(`🤖 Chatbot API: http://localhost:${PORT}/api/chat`);
       console.log(`👑 Admin Portal: http://localhost:5173/admin/login`);
       console.log(`📧 Admin Username: admin`);
       console.log(`🔑 Admin Password: Admin@123`);
