@@ -1,5 +1,5 @@
 const express = require('express');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, authorize } = require('../middleware/auth');
 const {
   loginClerk,
   getClerkProfile,
@@ -8,7 +8,13 @@ const {
   changePassword,
   getAdmissionApplications,
   verifyStudentApplication,
-  getVerificationStats
+  getVerificationStats,
+  createClerk,
+  getAllClerks,
+  getClerkById,
+  updateClerk,
+  deleteClerk,
+  resetClerkPassword
 } = require('../controllers/clerkController');
 
 const router = express.Router();
@@ -52,5 +58,36 @@ router.put('/verify-student/:id', authenticate, verifyStudentApplication);
 // @desc    Get verification statistics for clerk dashboard
 // @access  Private (Clerk only)
 router.get('/verification-stats', authenticate, getVerificationStats);
+
+// Admin-only routes for clerk management
+// @route   POST /api/clerk/create
+// @desc    Create new clerk
+// @access  Private (Admin only)
+router.post('/create', authenticate, authorize(['admin']), createClerk);
+
+// @route   GET /api/clerk/all
+// @desc    Get all clerks
+// @access  Private (Admin only)
+router.get('/all', authenticate, authorize(['admin']), getAllClerks);
+
+// @route   GET /api/clerk/:id
+// @desc    Get clerk by ID
+// @access  Private (Admin only)
+router.get('/:id', authenticate, authorize(['admin']), getClerkById);
+
+// @route   PUT /api/clerk/:id
+// @desc    Update clerk
+// @access  Private (Admin only)
+router.put('/:id', authenticate, authorize(['admin']), updateClerk);
+
+// @route   DELETE /api/clerk/:id
+// @desc    Delete clerk
+// @access  Private (Admin only)
+router.delete('/:id', authenticate, authorize(['admin']), deleteClerk);
+
+// @route   PUT /api/clerk/:id/reset-password
+// @desc    Reset clerk password
+// @access  Private (Admin only)
+router.put('/:id/reset-password', authenticate, authorize(['admin']), resetClerkPassword);
 
 module.exports = router;

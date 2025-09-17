@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 const Teacher = require('../models/Teacher');
 const Clerk = require('../models/Clerk');
+const { generateToken } = require('../utils/jwt');
 
 // @desc    Admin login
 // @route   POST /api/admin/login
@@ -46,10 +47,8 @@ const loginAdmin = async (req, res) => {
       }
     };
 
-    // Generate JWT token
-    const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: '24h'
-    });
+    // Generate JWT token using utility function with proper issuer/audience
+    const token = generateToken(payload, '24h');
 
     res.json({
       success: true,
@@ -152,25 +151,32 @@ const createTeacher = async (req, res) => {
     }
 
     const {
-      employeeId,
+      teacherId,
       personalInfo,
       professionalInfo,
       academicInfo,
       password
     } = req.body;
 
+    console.log('[2025-09-17T19:41:16.544Z] Request Body:', {
+      teacherId,
+      personalInfo,
+      professionalInfo,
+      academicInfo
+    });
+
     // Validation
-    if (!employeeId || !personalInfo?.fullName || !personalInfo?.email || !password) {
+    if (!teacherId || !personalInfo?.fullName || !personalInfo?.email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide required fields: employeeId, fullName, email, and password'
+        message: 'Please provide required fields: teacherId, fullName, email, and password'
       });
     }
 
     // Check if teacher already exists
     const existingTeacher = await Teacher.findOne({
       $or: [
-        { employeeId },
+        { teacherId },
         { 'personalInfo.email': personalInfo.email }
       ]
     });
@@ -178,7 +184,7 @@ const createTeacher = async (req, res) => {
     if (existingTeacher) {
       return res.status(400).json({
         success: false,
-        message: 'Teacher with this employee ID or email already exists'
+        message: 'Teacher with this teacher ID or email already exists'
       });
     }
 
@@ -188,13 +194,15 @@ const createTeacher = async (req, res) => {
 
     // Create new teacher
     const teacher = new Teacher({
-      employeeId,
+      teacherId,
       personalInfo,
       professionalInfo,
       academicInfo,
       password: hashedPassword,
-      isActive: true,
-      createdBy: req.user.id
+      systemInfo: {
+        status: 'Active',
+        createdBy: req.user.id
+      }
     });
 
     await teacher.save();

@@ -21,6 +21,7 @@ const admissionRoutes = require('./routes/admission');
 const paymentRoutes = require('./routes/payment');
 const adminRoutes = require('./routes/admin');
 const teacherRoutes = require('./routes/teacher');
+const attendanceRoutes = require('./routes/attendance');
 const clerkRoutes = require('./routes/clerk');
 
 const app = express();
@@ -74,6 +75,9 @@ app.use('/api/admin', adminRoutes);
 
 // Teacher routes
 app.use('/api/teacher', teacherRoutes);
+
+// Attendance routes
+app.use('/api/attendance', attendanceRoutes);
 
 // Clerk routes
 app.use('/api/clerk', clerkRoutes);

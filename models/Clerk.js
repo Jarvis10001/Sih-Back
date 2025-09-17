@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const mongoosePaginate = require('mongoose-paginate-v2');
 
 const ClerkSchema = new mongoose.Schema({
   employeeId: {
@@ -170,6 +171,9 @@ ClerkSchema.index({ employeeId: 1 });
 ClerkSchema.index({ 'personalInfo.email': 1 });
 ClerkSchema.index({ 'professionalInfo.department': 1 });
 ClerkSchema.index({ isActive: 1 });
+
+// Add pagination plugin
+ClerkSchema.plugin(mongoosePaginate);
 
 // Hash password before saving
 ClerkSchema.pre('save', async function(next) {
