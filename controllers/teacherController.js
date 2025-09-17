@@ -18,7 +18,7 @@ const loginTeacher = async (req, res) => {
     }
 
     // Check if teacher exists
-    const teacher = await Teacher.findOne({ employeeId: teacherId }).select('+password');
+    const teacher = await Teacher.findOne({ teacherId: teacherId }).select('+password');
     if (!teacher) {
       return res.status(401).json({
         success: false,
@@ -48,7 +48,7 @@ const loginTeacher = async (req, res) => {
       user: {
         id: teacher._id,
         role: 'teacher',
-        teacherId: teacher.employeeId,
+        teacherId: teacher.teacherId,
         email: teacher.personalInfo.email
       }
     };

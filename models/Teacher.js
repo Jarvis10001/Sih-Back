@@ -60,11 +60,13 @@ const teacherSchema = new mongoose.Schema({
     aadharNumber: {
       type: String,
       unique: true,
+      sparse: true, // Allow multiple null values
       match: /^\d{12}$/
     },
     panNumber: {
       type: String,
       unique: true,
+      sparse: true, // Allow multiple null values
       uppercase: true,
       match: /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/
     }

@@ -40,11 +40,23 @@ const authenticate = async (req, res, next) => {
     const decoded = verifyToken(token);
     
     // Add user info to request object
-    req.user = {
-      id: decoded.id,
-      email: decoded.email,
-      role: decoded.role || 'user'
-    };
+    // Handle both admin token structure (with user object) and regular token structure
+    if (decoded.user) {
+      // Admin token structure: { user: { id, role, username } }
+      req.user = {
+        id: decoded.user.id,
+        email: decoded.user.email || decoded.user.username,
+        role: decoded.user.role || 'user',
+        username: decoded.user.username
+      };
+    } else {
+      // Regular token structure: { id, email, role }
+      req.user = {
+        id: decoded.id,
+        email: decoded.email,
+        role: decoded.role || 'user'
+      };
+    }
 
     next();
   } catch (error) {

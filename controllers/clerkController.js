@@ -508,6 +508,299 @@ const getVerificationStats = async (req, res) => {
   }
 };
 
+// @desc    Create new clerk (Admin only)
+// @route   POST /api/clerk/create
+// @access  Private (Admin only)
+const createClerk = async (req, res) => {
+  try {
+    const {
+      employeeId,
+      personalInfo,
+      professionalInfo,
+      systemAccess,
+      password = 'clerk123' // Default password
+    } = req.body;
+
+    // Validation
+    if (!employeeId || !personalInfo?.fullName || !personalInfo?.email || !professionalInfo?.designation) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide all required fields'
+      });
+    }
+
+    // Check if clerk already exists
+    const existingClerk = await Clerk.findOne({
+      $or: [
+        { employeeId },
+        { 'personalInfo.email': personalInfo.email }
+      ]
+    });
+
+    if (existingClerk) {
+      return res.status(400).json({
+        success: false,
+        message: 'Clerk with this employee ID or email already exists'
+      });
+    }
+
+    // Calculate total salary if components provided
+    if (professionalInfo.salary && (professionalInfo.salary.basic || professionalInfo.salary.allowances)) {
+      professionalInfo.salary.total = (professionalInfo.salary.basic || 0) + (professionalInfo.salary.allowances || 0);
+    }
+
+    // Create new clerk
+    const clerk = new Clerk({
+      employeeId,
+      personalInfo,
+      professionalInfo,
+      systemAccess: systemAccess || {
+        modules: ['student_management'],
+        accessLevel: 'read'
+      },
+      password,
+      createdBy: req.user.id
+    });
+
+    await clerk.save();
+
+    // Remove password from response
+    const clerkResponse = clerk.toJSON();
+    delete clerkResponse.password;
+
+    res.status(201).json({
+      success: true,
+      message: 'Clerk created successfully',
+      data: clerkResponse
+    });
+
+  } catch (error) {
+    console.error('Create clerk error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while creating clerk'
+    });
+  }
+};
+
+// @desc    Get all clerks (Admin only)
+// @route   GET /api/clerk/all
+// @access  Private (Admin only)
+const getAllClerks = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search, department, isActive, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+
+    // Build query
+    let query = {};
+
+    if (search) {
+      query.$or = [
+        { employeeId: { $regex: search, $options: 'i' } },
+        { 'personalInfo.fullName': { $regex: search, $options: 'i' } },
+        { 'personalInfo.email': { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    if (department) {
+      query['professionalInfo.department'] = department;
+    }
+
+    if (isActive !== undefined) {
+      query.isActive = isActive === 'true';
+    }
+
+    // Sort options
+    const sortOptions = {};
+    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    // Execute query with pagination
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sort: sortOptions,
+      populate: {
+        path: 'createdBy',
+        select: 'username'
+      }
+    };
+
+    const result = await Clerk.paginate(query, options);
+
+    res.json({
+      success: true,
+      data: result.docs,
+      pagination: {
+        currentPage: result.page,
+        totalPages: result.totalPages,
+        totalDocs: result.totalDocs,
+        limit: result.limit,
+        hasNextPage: result.hasNextPage,
+        hasPrevPage: result.hasPrevPage
+      }
+    });
+
+  } catch (error) {
+    console.error('Get all clerks error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching clerks'
+    });
+  }
+};
+
+// @desc    Get clerk by ID (Admin only)
+// @route   GET /api/clerk/:id
+// @access  Private (Admin only)
+const getClerkById = async (req, res) => {
+  try {
+    const clerk = await Clerk.findById(req.params.id).populate('createdBy', 'username');
+
+    if (!clerk) {
+      return res.status(404).json({
+        success: false,
+        message: 'Clerk not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: clerk
+    });
+
+  } catch (error) {
+    console.error('Get clerk by ID error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching clerk'
+    });
+  }
+};
+
+// @desc    Update clerk (Admin only)
+// @route   PUT /api/clerk/:id
+// @access  Private (Admin only)
+const updateClerk = async (req, res) => {
+  try {
+    const {
+      personalInfo,
+      professionalInfo,
+      systemAccess,
+      isActive
+    } = req.body;
+
+    const clerk = await Clerk.findById(req.params.id);
+
+    if (!clerk) {
+      return res.status(404).json({
+        success: false,
+        message: 'Clerk not found'
+      });
+    }
+
+    // Update fields
+    if (personalInfo) {
+      Object.assign(clerk.personalInfo, personalInfo);
+    }
+
+    if (professionalInfo) {
+      Object.assign(clerk.professionalInfo, professionalInfo);
+      
+      // Recalculate total salary if components changed
+      if (professionalInfo.salary && (professionalInfo.salary.basic !== undefined || professionalInfo.salary.allowances !== undefined)) {
+        clerk.professionalInfo.salary.total = (clerk.professionalInfo.salary.basic || 0) + (clerk.professionalInfo.salary.allowances || 0);
+      }
+    }
+
+    if (systemAccess) {
+      Object.assign(clerk.systemAccess, systemAccess);
+    }
+
+    if (isActive !== undefined) {
+      clerk.isActive = isActive;
+    }
+
+    await clerk.save();
+
+    res.json({
+      success: true,
+      message: 'Clerk updated successfully',
+      data: clerk
+    });
+
+  } catch (error) {
+    console.error('Update clerk error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating clerk'
+    });
+  }
+};
+
+// @desc    Delete clerk (Admin only)
+// @route   DELETE /api/clerk/:id
+// @access  Private (Admin only)
+const deleteClerk = async (req, res) => {
+  try {
+    const clerk = await Clerk.findById(req.params.id);
+
+    if (!clerk) {
+      return res.status(404).json({
+        success: false,
+        message: 'Clerk not found'
+      });
+    }
+
+    // Soft delete - set isActive to false
+    clerk.isActive = false;
+    await clerk.save();
+
+    res.json({
+      success: true,
+      message: 'Clerk deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Delete clerk error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while deleting clerk'
+    });
+  }
+};
+
+// @desc    Reset clerk password (Admin only)
+// @route   PUT /api/clerk/:id/reset-password
+// @access  Private (Admin only)
+const resetClerkPassword = async (req, res) => {
+  try {
+    const { newPassword = 'clerk123' } = req.body;
+
+    const clerk = await Clerk.findById(req.params.id);
+
+    if (!clerk) {
+      return res.status(404).json({
+        success: false,
+        message: 'Clerk not found'
+      });
+    }
+
+    clerk.password = newPassword;
+    await clerk.save();
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully'
+    });
+
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while resetting password'
+    });
+  }
+};
+
 module.exports = {
   loginClerk,
   getClerkProfile,
@@ -516,5 +809,11 @@ module.exports = {
   changePassword,
   getAdmissionApplications,
   verifyStudentApplication,
-  getVerificationStats
+  getVerificationStats,
+  createClerk,
+  getAllClerks,
+  getClerkById,
+  updateClerk,
+  deleteClerk,
+  resetClerkPassword
 };
