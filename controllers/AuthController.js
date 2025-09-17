@@ -1,3 +1,5 @@
+const sendEmail = require("../utils/sendEmail");
+
 const User = require('../models/UserMongo');
 const { generateToken, generateRefreshToken } = require('../utils/jwt');
 
@@ -48,6 +50,20 @@ const registerUser = async (req, res) => {
 
     // Save refresh token
     await user.addRefreshToken(refreshToken);
+
+    // Send a welcome email after signup
+    try {
+      await sendEmail({
+        to: email,
+        subject: "Welcome to College ERP!",
+        text: `Hi ${name}, your account has been successfully created on College ERP.`,
+        html: `<h3>Hi ${name}</h3><p>Your account has been successfully created on <b>College ERP</b>. Welcome aboard!</p>`
+      });
+    } catch (emailError) {
+      console.error("Failed to send welcome email:", emailError.message);
+      // Continue without breaking signup
+    }
+    
 
     res.status(201).json({
       success: true,
