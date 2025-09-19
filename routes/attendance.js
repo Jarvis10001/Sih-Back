@@ -7,11 +7,15 @@ const {
   getAttendanceById,
   updateAttendance,
   deleteAttendance,
-  getStudentAttendance
+  getStudentAttendance,
+  downloadTemplate
 } = require('../controllers/attendanceController');
 const { authenticate } = require('../middleware/auth');
 
-// All routes require authentication
+// Public template download (no auth required)
+router.get('/template', downloadTemplate);
+
+// All other routes require authentication
 router.use(authenticate);
 
 // Teacher routes

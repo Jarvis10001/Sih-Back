@@ -42,19 +42,25 @@ const authenticate = async (req, res, next) => {
     // Add user info to request object
     // Handle both admin token structure (with user object) and regular token structure
     if (decoded.user) {
-      // Admin token structure: { user: { id, role, username } }
+      // Admin/Clerk/Teacher token structure: { user: { id, role, username, employeeId, systemAccess, teacherId } }
       req.user = {
         id: decoded.user.id,
         email: decoded.user.email || decoded.user.username,
         role: decoded.user.role || 'user',
-        username: decoded.user.username
+        username: decoded.user.username,
+        employeeId: decoded.user.employeeId,
+        systemAccess: decoded.user.systemAccess,
+        teacherId: decoded.user.teacherId
       };
     } else {
-      // Regular token structure: { id, email, role }
+      // Regular token structure: { id, email, role, studentId, year, branch }
       req.user = {
         id: decoded.id,
         email: decoded.email,
-        role: decoded.role || 'user'
+        role: decoded.role || 'user',
+        studentId: decoded.studentId, // Add studentId for student tokens
+        year: decoded.year,
+        branch: decoded.branch
       };
     }
 

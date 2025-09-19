@@ -371,6 +371,31 @@ teacherSchema.methods.isActive = function() {
   return this.systemInfo.status === 'Active';
 };
 
+teacherSchema.methods.comparePassword = async function(candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
+};
+
+// Pre-save middleware to hash password
+teacherSchema.pre('save', async function(next) {
+  // Hash password if it's modified
+  if (this.isModified('password')) {
+    this.password = await bcrypt.hash(this.password, 10);
+  }
+
+  // Calculate total salary
+  if (this.isModified('professionalInfo.salary')) {
+    this.professionalInfo.salary.total = 
+      this.professionalInfo.salary.basic + this.professionalInfo.salary.allowances;
+  }
+
+  // Copy current address to permanent if same address
+  if (this.address.isSameAddress) {
+    this.address.permanentAddress = { ...this.address.currentAddress };
+  }
+
+  next();
+});
+
 // Static methods
 teacherSchema.statics.findByTeacherId = function(teacherId) {
   return this.findOne({ teacherId: teacherId.toUpperCase() });

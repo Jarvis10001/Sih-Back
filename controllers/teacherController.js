@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { generateToken } = require('../utils/jwt');
 const Teacher = require('../models/Teacher');
 
 // @desc    Teacher login
@@ -18,7 +19,7 @@ const loginTeacher = async (req, res) => {
     }
 
     // Check if teacher exists
-    const teacher = await Teacher.findOne({ teacherId: teacherId }).select('+password');
+    const teacher = await Teacher.findByTeacherId(teacherId).select('+password');
     if (!teacher) {
       return res.status(401).json({
         success: false,
@@ -27,7 +28,7 @@ const loginTeacher = async (req, res) => {
     }
 
     // Check if teacher is active
-    if (!teacher.isActive) {
+    if (!teacher.isActive()) {
       return res.status(401).json({
         success: false,
         message: 'Your account has been deactivated. Please contact administration.'
@@ -35,7 +36,7 @@ const loginTeacher = async (req, res) => {
     }
 
     // Validate password
-    const isMatch = await bcrypt.compare(password, teacher.password);
+    const isMatch = await teacher.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -54,9 +55,7 @@ const loginTeacher = async (req, res) => {
     };
 
     // Generate JWT token
-    const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: '24h'
-    });
+    const token = generateToken(payload, '24h');
 
     // Remove password from response
     const teacherData = teacher.toObject();

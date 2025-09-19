@@ -1,5 +1,5 @@
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const { generateToken } = require('../utils/jwt');
 const Clerk = require('../models/Clerk');
 const Admission = require('../models/Admission');
 
@@ -51,9 +51,7 @@ const loginClerk = async (req, res) => {
     };
 
     // Generate JWT token
-    const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: '24h'
-    });
+    const token = generateToken(payload, '24h');
 
     // Prepare response data (exclude sensitive information)
     const clerkData = {
@@ -311,8 +309,7 @@ const getAdmissionApplications = async (req, res) => {
     }
 
     // Check if clerk has admission processing access
-    const clerk = await Clerk.findById(req.user.id);
-    if (!clerk.systemAccess.modules.includes('admission_processing')) {
+    if (!req.user.systemAccess || !req.user.systemAccess.modules.includes('admission_processing')) {
       return res.status(403).json({
         success: false,
         message: 'Access denied. Admission processing permission required.'
@@ -504,6 +501,278 @@ const getVerificationStats = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error while fetching verification stats'
+    });
+  }
+};
+
+// @desc    Verify individual document
+// @route   PUT /api/clerk/verify-document/:applicationId/:documentType
+// @access  Private (Clerk only)
+const verifyDocument = async (req, res) => {
+  try {
+    // Check if user is clerk
+    if (req.user.role !== 'clerk') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Clerk role required.'
+      });
+    }
+
+    // Check if clerk has admission processing access
+    const clerk = await Clerk.findById(req.user.id);
+    if (!clerk.systemAccess.modules.includes('admission_processing')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admission processing permission required.'
+      });
+    }
+
+    const { applicationId, documentType } = req.params;
+    const { status, notes } = req.body;
+
+    // Validation
+    if (!status || !['verified', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid status (verified/rejected) is required'
+      });
+    }
+
+    const validDocumentTypes = [
+      'tenthMarksheet', 'twelfthMarksheet', 'medicalCertificate', 
+      'jeeResult', 'categoryCertificate', 'aadharCard', 'photo', 'signature'
+    ];
+
+    if (!validDocumentTypes.includes(documentType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid document type'
+      });
+    }
+
+    const application = await Admission.findById(applicationId);
+    
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        message: 'Application not found'
+      });
+    }
+
+    // Check if document exists
+    if (!application.documents[documentType] || !application.documents[documentType].filename) {
+      return res.status(404).json({
+        success: false,
+        message: 'Document not found'
+      });
+    }
+
+    // Update document verification status
+    application.documents[documentType].verificationStatus = status;
+    application.documents[documentType].verificationNotes = notes || '';
+    application.documents[documentType].verifiedBy = req.user.id;
+    application.documents[documentType].verifiedAt = new Date();
+
+    // Check if all uploaded documents are verified
+    const documentTypes = Object.keys(application.documents);
+    const uploadedDocs = documentTypes.filter(docType => 
+      application.documents[docType] && application.documents[docType].filename
+    );
+    
+    const allVerified = uploadedDocs.every(docType => 
+      application.documents[docType].verificationStatus === 'verified'
+    );
+    
+    const anyRejected = uploadedDocs.some(docType => 
+      application.documents[docType].verificationStatus === 'rejected'
+    );
+
+    // Update overall verification status based on individual document statuses
+    if (anyRejected) {
+      application.verificationStatus = 'rejected';
+      application.verificationNotes = 'One or more documents were rejected. Please check individual document feedback.';
+    } else if (allVerified) {
+      application.verificationStatus = 'verified';
+      application.verificationNotes = 'All documents verified successfully.';
+    } else {
+      application.verificationStatus = 'pending';
+    }
+
+    await application.save();
+
+    res.json({
+      success: true,
+      message: `Document ${status} successfully`,
+      application
+    });
+
+  } catch (error) {
+    console.error('Verify document error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while verifying document'
+    });
+  }
+};
+
+// @desc    Get application with detailed document verification status
+// @route   GET /api/clerk/application/:id/documents
+// @access  Private (Clerk only)
+const getApplicationDocuments = async (req, res) => {
+  try {
+    // Check if user is clerk
+    if (req.user.role !== 'clerk') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Clerk role required.'
+      });
+    }
+
+    // Check if clerk has admission processing access
+    const clerk = await Clerk.findById(req.user.id);
+    if (!clerk.systemAccess.modules.includes('admission_processing')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admission processing permission required.'
+      });
+    }
+
+    const { id } = req.params;
+
+    const application = await Admission.findById(id)
+      .populate('verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.tenthMarksheet.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.twelfthMarksheet.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.medicalCertificate.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.jeeResult.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.categoryCertificate.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.aadharCard.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.photo.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.signature.verifiedBy', 'personalInfo.fullName employeeId');
+    
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        message: 'Application not found'
+      });
+    }
+
+    // Prepare document summary
+    const documentSummary = {};
+    const documentTypes = ['tenthMarksheet', 'twelfthMarksheet', 'medicalCertificate', 'jeeResult', 'categoryCertificate', 'aadharCard', 'photo', 'signature'];
+    
+    documentTypes.forEach(docType => {
+      const doc = application.documents[docType];
+      if (doc && doc.filename) {
+        documentSummary[docType] = {
+          uploaded: true,
+          filename: doc.filename,
+          originalName: doc.originalName,
+          url: doc.url,
+          uploadedAt: doc.uploadedAt,
+          verificationStatus: doc.verificationStatus || 'pending',
+          verificationNotes: doc.verificationNotes || '',
+          verifiedBy: doc.verifiedBy,
+          verifiedAt: doc.verifiedAt,
+          size: doc.size,
+          mimetype: doc.mimetype
+        };
+      } else {
+        documentSummary[docType] = {
+          uploaded: false,
+          verificationStatus: 'not_uploaded'
+        };
+      }
+    });
+
+    res.json({
+      success: true,
+      application: {
+        _id: application._id,
+        applicationNumber: application.applicationNumber,
+        personalInfo: application.personalInfo,
+        academicInfo: application.academicInfo,
+        categoryInfo: application.categoryInfo,
+        addressInfo: application.addressInfo,
+        verificationStatus: application.verificationStatus,
+        verificationNotes: application.verificationNotes,
+        submittedAt: application.submittedAt,
+        documents: documentSummary
+      }
+    });
+
+  } catch (error) {
+    console.error('Get application documents error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching application documents'
+    });
+  }
+};
+
+// @desc    Get document verification statistics for specific application
+// @route   GET /api/clerk/application/:id/verification-summary
+// @access  Private (Clerk only)
+const getVerificationSummary = async (req, res) => {
+  try {
+    // Check if user is clerk
+    if (req.user.role !== 'clerk') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Clerk role required.'
+      });
+    }
+
+    const { id } = req.params;
+
+    const application = await Admission.findById(id);
+    
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        message: 'Application not found'
+      });
+    }
+
+    const documentTypes = ['tenthMarksheet', 'twelfthMarksheet', 'medicalCertificate', 'jeeResult', 'categoryCertificate', 'aadharCard', 'photo', 'signature'];
+    
+    let uploaded = 0;
+    let verified = 0;
+    let rejected = 0;
+    let pending = 0;
+
+    documentTypes.forEach(docType => {
+      const doc = application.documents[docType];
+      if (doc && doc.filename) {
+        uploaded++;
+        const status = doc.verificationStatus || 'pending';
+        if (status === 'verified') verified++;
+        else if (status === 'rejected') rejected++;
+        else pending++;
+      }
+    });
+
+    const summary = {
+      totalDocuments: documentTypes.length,
+      uploaded,
+      notUploaded: documentTypes.length - uploaded,
+      verified,
+      rejected,
+      pending,
+      completionPercentage: uploaded > 0 ? Math.round((verified / uploaded) * 100) : 0,
+      overallStatus: application.verificationStatus || 'pending'
+    };
+
+    res.json({
+      success: true,
+      summary
+    });
+
+  } catch (error) {
+    console.error('Get verification summary error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching verification summary'
     });
   }
 };
@@ -810,6 +1079,9 @@ module.exports = {
   getAdmissionApplications,
   verifyStudentApplication,
   getVerificationStats,
+  verifyDocument,
+  getApplicationDocuments,
+  getVerificationSummary,
   createClerk,
   getAllClerks,
   getClerkById,

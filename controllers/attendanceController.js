@@ -502,6 +502,14 @@ const getStudentAttendance = async (req, res) => {
     const { studentId } = req.params;
     const { academicYear, semester, subject } = req.query;
 
+    // Authorization check: Students can only access their own attendance
+    if (req.user.role === 'student' && req.user.studentId !== studentId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only view your own attendance records.'
+      });
+    }
+
     let query = {
       'studentAttendance.studentId': studentId,
       isActive: true
@@ -552,6 +560,49 @@ const getStudentAttendance = async (req, res) => {
   }
 };
 
+// @desc    Download attendance template
+// @route   GET /api/attendance/template
+// @access  Public
+const downloadTemplate = async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const csvContent = `# Student Attendance Template
+# Instructions:
+# 1. Fill in your class information below (optional header info)
+# 2. Update the SID and Status columns with your student data
+# 3. Status options: Present, Absent, Late, Excused (or P/A/L/E)
+# 4. Save as CSV and upload through the Teacher Dashboard
+
+Date: ${today}
+Class: [Your Subject] - Section [A/B/C] - Semester [1-8]
+Teacher: [Your Name] ([Your Teacher ID])
+
+SID,Status
+STU001,Present
+STU002,Absent
+STU003,Present
+STU004,Late
+STU005,Excused
+STU006,Present
+STU007,Absent
+STU008,Late
+STU009,Present
+STU010,Excused`;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="attendance_template_${today}.csv"`);
+    res.send(csvContent);
+
+  } catch (error) {
+    console.error('Download template error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while generating template'
+    });
+  }
+};
+
 module.exports = {
   upload,
   uploadAttendance,
@@ -559,5 +610,6 @@ module.exports = {
   getAttendanceById,
   updateAttendance,
   deleteAttendance,
-  getStudentAttendance
+  getStudentAttendance,
+  downloadTemplate
 };

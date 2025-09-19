@@ -213,12 +213,84 @@ const updateAdmissionForm = async (req, res) => {
       });
     }
 
+    // Handle document uploads and reset verification status for reuploaded documents
+    if (req.files) {
+      const documentTypes = ['tenthMarksheet', 'twelfthMarksheet', 'medicalCertificate', 'jeeResult', 'categoryCertificate', 'aadharCard', 'photo', 'signature'];
+      
+      documentTypes.forEach(docType => {
+        if (req.files[docType] && req.files[docType][0]) {
+          const file = req.files[docType][0];
+          
+          // Create document object with Cloudinary data
+          const documentData = {
+            filename: file.filename,
+            originalName: file.originalname,
+            path: file.path,
+            url: file.path, // Cloudinary secure_url
+            publicId: file.filename,
+            size: file.size,
+            mimetype: file.mimetype,
+            cloudinaryData: {
+              public_id: file.filename,
+              secure_url: file.path,
+              resource_type: 'image',
+              format: file.originalname.split('.').pop(),
+              bytes: file.size,
+              created_at: new Date()
+            },
+            uploadedAt: new Date(),
+            // Reset verification status when document is reuploaded
+            verificationStatus: 'pending',
+            verificationNotes: '',
+            verifiedBy: null,
+            verifiedAt: null
+          };
+          
+          // Update the document in admission
+          if (!admission.documents) admission.documents = {};
+          admission.documents[docType] = documentData;
+        }
+      });
+      
+      // Recalculate overall verification status after document reupload
+      const allDocuments = Object.keys(admission.documents || {});
+      const uploadedDocs = allDocuments.filter(docType => 
+        admission.documents[docType] && admission.documents[docType].filename
+      );
+      
+      if (uploadedDocs.length > 0) {
+        const allVerified = uploadedDocs.every(docType => 
+          admission.documents[docType].verificationStatus === 'verified'
+        );
+        
+        const anyRejected = uploadedDocs.some(docType => 
+          admission.documents[docType].verificationStatus === 'rejected'
+        );
+        
+        const anyPending = uploadedDocs.some(docType => 
+          admission.documents[docType].verificationStatus === 'pending'
+        );
+        
+        // Update overall verification status
+        if (anyPending) {
+          admission.verificationStatus = 'pending';
+          admission.verificationNotes = 'Document verification pending. Some documents have been reuploaded.';
+        } else if (anyRejected) {
+          admission.verificationStatus = 'rejected';
+          admission.verificationNotes = 'One or more documents were rejected. Please check individual document feedback.';
+        } else if (allVerified) {
+          admission.verificationStatus = 'verified';
+          admission.verificationNotes = 'All documents verified successfully.';
+        }
+      }
+    }
+
     // Update the admission data
     const updateData = { ...req.body };
     delete updateData.userId; // Prevent userId changes
     
     Object.keys(updateData).forEach(key => {
-      if (updateData[key] !== undefined) {
+      if (updateData[key] !== undefined && key !== 'documents') { // Don't overwrite documents handled above
         admission[key] = updateData[key];
       }
     });
@@ -336,10 +408,248 @@ const updateAdmissionStatus = async (req, res) => {
   }
 };
 
+// @desc    Get document verification status for student
+// @route   GET /api/admission/document-status
+// @access  Private (Student)
+const getDocumentVerificationStatus = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const admission = await Admission.findOne({ userId })
+      .populate('documents.tenthMarksheet.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.twelfthMarksheet.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.medicalCertificate.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.jeeResult.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.categoryCertificate.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.aadharCard.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.photo.verifiedBy', 'personalInfo.fullName employeeId')
+      .populate('documents.signature.verifiedBy', 'personalInfo.fullName employeeId');
+    
+    if (!admission) {
+      return res.status(404).json({
+        success: false,
+        message: 'Admission form not found'
+      });
+    }
+
+    // Prepare document summary for student view
+    const documentSummary = {};
+    const documentTypes = ['tenthMarksheet', 'twelfthMarksheet', 'medicalCertificate', 'jeeResult', 'categoryCertificate', 'aadharCard', 'photo', 'signature'];
+    
+    documentTypes.forEach(docType => {
+      const doc = admission.documents[docType];
+      if (doc && doc.filename) {
+        documentSummary[docType] = {
+          uploaded: true,
+          filename: doc.filename,
+          originalName: doc.originalName,
+          uploadedAt: doc.uploadedAt,
+          verificationStatus: doc.verificationStatus || 'pending',
+          verificationNotes: doc.verificationNotes || '',
+          verifiedAt: doc.verifiedAt,
+          verifiedBy: doc.verifiedBy ? {
+            name: doc.verifiedBy.personalInfo?.fullName,
+            employeeId: doc.verifiedBy.employeeId
+          } : null
+        };
+      } else {
+        documentSummary[docType] = {
+          uploaded: false,
+          verificationStatus: 'not_uploaded'
+        };
+      }
+    });
+
+    // Calculate verification statistics
+    const uploadedDocs = documentTypes.filter(docType => 
+      admission.documents[docType] && admission.documents[docType].filename
+    );
+    
+    const verifiedDocs = uploadedDocs.filter(docType => 
+      admission.documents[docType].verificationStatus === 'verified'
+    );
+    
+    const rejectedDocs = uploadedDocs.filter(docType => 
+      admission.documents[docType].verificationStatus === 'rejected'
+    );
+
+    const verificationSummary = {
+      totalDocuments: documentTypes.length,
+      uploaded: uploadedDocs.length,
+      notUploaded: documentTypes.length - uploadedDocs.length,
+      verified: verifiedDocs.length,
+      rejected: rejectedDocs.length,
+      pending: uploadedDocs.length - verifiedDocs.length - rejectedDocs.length,
+      completionPercentage: uploadedDocs.length > 0 ? Math.round((verifiedDocs.length / uploadedDocs.length) * 100) : 0,
+      overallStatus: admission.verificationStatus || 'pending',
+      overallNotes: admission.verificationNotes || ''
+    };
+
+    res.json({
+      success: true,
+      data: {
+        applicationNumber: admission.applicationNumber,
+        submittedAt: admission.submittedAt,
+        verificationSummary,
+        documents: documentSummary,
+        personalInfo: {
+          name: admission.personalInfo?.name,
+          email: admission.personalInfo?.email
+        },
+        academicInfo: {
+          course: admission.academicInfo?.course,
+          branch: admission.academicInfo?.branch
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get document verification status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch document verification status',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Reupload specific document
+// @route   PUT /api/admission/reupload-document/:documentType
+// @access  Private (Student)
+const reuploadDocument = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { documentType } = req.params;
+    
+    const validDocumentTypes = [
+      'tenthMarksheet', 'twelfthMarksheet', 'medicalCertificate', 
+      'jeeResult', 'categoryCertificate', 'aadharCard', 'photo', 'signature'
+    ];
+
+    if (!validDocumentTypes.includes(documentType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid document type'
+      });
+    }
+
+    if (!req.files || !req.files[documentType] || !req.files[documentType][0]) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    const admission = await Admission.findOne({ userId });
+    
+    if (!admission) {
+      return res.status(404).json({
+        success: false,
+        message: 'Admission form not found'
+      });
+    }
+
+    // Check if the application is not in final status
+    if (['approved', 'rejected'].includes(admission.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot reupload documents after final processing'
+      });
+    }
+
+    const file = req.files[documentType][0];
+    
+    // Create new document object with reset verification status
+    const documentData = {
+      filename: file.filename,
+      originalName: file.originalname,
+      path: file.path,
+      url: file.path, // Cloudinary secure_url
+      publicId: file.filename,
+      size: file.size,
+      mimetype: file.mimetype,
+      cloudinaryData: {
+        public_id: file.filename,
+        secure_url: file.path,
+        resource_type: 'image',
+        format: file.originalname.split('.').pop(),
+        bytes: file.size,
+        created_at: new Date()
+      },
+      uploadedAt: new Date(),
+      // Reset verification status for reuploaded document
+      verificationStatus: 'pending',
+      verificationNotes: '',
+      verifiedBy: null,
+      verifiedAt: null
+    };
+    
+    // Update the specific document
+    if (!admission.documents) admission.documents = {};
+    admission.documents[documentType] = documentData;
+    
+    // Recalculate overall verification status
+    const allDocuments = Object.keys(admission.documents || {});
+    const uploadedDocs = allDocuments.filter(docType => 
+      admission.documents[docType] && admission.documents[docType].filename
+    );
+    
+    if (uploadedDocs.length > 0) {
+      const allVerified = uploadedDocs.every(docType => 
+        admission.documents[docType].verificationStatus === 'verified'
+      );
+      
+      const anyRejected = uploadedDocs.some(docType => 
+        admission.documents[docType].verificationStatus === 'rejected'
+      );
+      
+      const anyPending = uploadedDocs.some(docType => 
+        admission.documents[docType].verificationStatus === 'pending'
+      );
+      
+      // Update overall verification status
+      if (anyPending) {
+        admission.verificationStatus = 'pending';
+        admission.verificationNotes = `Document reuploaded for verification. ${documentType} has been submitted for review.`;
+      } else if (anyRejected) {
+        admission.verificationStatus = 'rejected';
+        admission.verificationNotes = 'One or more documents were rejected. Please check individual document feedback.';
+      } else if (allVerified) {
+        admission.verificationStatus = 'verified';
+        admission.verificationNotes = 'All documents verified successfully.';
+      }
+    }
+
+    admission.updatedAt = new Date();
+    await admission.save();
+
+    res.json({
+      success: true,
+      message: `${documentType} reuploaded successfully and queued for verification`,
+      data: {
+        documentType,
+        verificationStatus: 'pending',
+        uploadedAt: documentData.uploadedAt,
+        overallStatus: admission.verificationStatus
+      }
+    });
+
+  } catch (error) {
+    console.error('Reupload document error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reupload document',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   submitAdmission,
   getAdmissionForm,
   updateAdmissionForm,
   getAllAdmissions,
-  updateAdmissionStatus
+  updateAdmissionStatus,
+  getDocumentVerificationStatus,
+  reuploadDocument
 };

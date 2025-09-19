@@ -7,7 +7,9 @@ const {
   getAdmissionForm,
   updateAdmissionForm,
   getAllAdmissions,
-  updateAdmissionStatus
+  updateAdmissionStatus,
+  getDocumentVerificationStatus,
+  reuploadDocument
 } = require('../controllers/admissionController');
 
 const router = express.Router();
@@ -47,6 +49,36 @@ router.get('/form', authenticate, getAdmissionForm);
 // @desc    Update admission form
 // @access  Private
 router.put('/update', authenticate, uploadFields, updateAdmissionForm);
+
+// @route   GET /api/admission/document-status
+// @desc    Get document verification status for student
+// @access  Private (Student)
+router.get('/document-status', authenticate, getDocumentVerificationStatus);
+
+// @route   PUT /api/admission/reupload-document/:documentType
+// @desc    Reupload specific rejected document
+// @access  Private (Student)
+router.put('/reupload-document/:documentType', authenticate, (req, res, next) => {
+  // Dynamic field name based on document type
+  const documentType = req.params.documentType;
+  const dynamicUpload = upload.single(documentType);
+  dynamicUpload(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({
+        success: false,
+        message: 'File upload error: ' + err.message
+      });
+    }
+    
+    // Convert single file to the expected format
+    if (req.file) {
+      req.files = {};
+      req.files[documentType] = [req.file];
+    }
+    
+    next();
+  });
+}, reuploadDocument);
 
 // @route   GET /api/admission/all
 // @desc    Get all admissions (Admin only)

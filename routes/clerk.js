@@ -9,6 +9,9 @@ const {
   getAdmissionApplications,
   verifyStudentApplication,
   getVerificationStats,
+  verifyDocument,
+  getApplicationDocuments,
+  getVerificationSummary,
   createClerk,
   getAllClerks,
   getClerkById,
@@ -58,6 +61,21 @@ router.put('/verify-student/:id', authenticate, verifyStudentApplication);
 // @desc    Get verification statistics for clerk dashboard
 // @access  Private (Clerk only)
 router.get('/verification-stats', authenticate, getVerificationStats);
+
+// @route   PUT /api/clerk/verify-document/:applicationId/:documentType
+// @desc    Verify individual document with detailed feedback
+// @access  Private (Clerk only)
+router.put('/verify-document/:applicationId/:documentType', authenticate, verifyDocument);
+
+// @route   GET /api/clerk/application/:id/documents
+// @desc    Get application with detailed document verification status
+// @access  Private (Clerk only)
+router.get('/application/:id/documents', authenticate, getApplicationDocuments);
+
+// @route   GET /api/clerk/application/:id/verification-summary
+// @desc    Get document verification summary for application
+// @access  Private (Clerk only)
+router.get('/application/:id/verification-summary', authenticate, getVerificationSummary);
 
 // Admin-only routes for clerk management
 // @route   POST /api/clerk/create

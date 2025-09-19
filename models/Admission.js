@@ -240,15 +240,157 @@ const admissionSchema = new mongoose.Schema({
       uploadedAt: {
         type: Date,
         default: Date.now
+      },
+      verificationStatus: {
+        type: String,
+        enum: ['pending', 'verified', 'rejected'],
+        default: 'pending'
+      },
+      verificationNotes: {
+        type: String,
+        trim: true
+      },
+      verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Clerk'
+      },
+      verifiedAt: {
+        type: Date
       }
     },
-    twelfthMarksheet: documentSchema,
-    medicalCertificate: documentSchema,
-    jeeResult: documentSchema,
-    categoryCertificate: documentSchema,
-    aadharCard: documentSchema,
-    photo: documentSchema,
-    signature: documentSchema
+    twelfthMarksheet: {
+      ...documentSchema,
+      verificationStatus: {
+        type: String,
+        enum: ['pending', 'verified', 'rejected'],
+        default: 'pending'
+      },
+      verificationNotes: {
+        type: String,
+        trim: true
+      },
+      verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Clerk'
+      },
+      verifiedAt: {
+        type: Date
+      }
+    },
+    medicalCertificate: {
+      ...documentSchema,
+      verificationStatus: {
+        type: String,
+        enum: ['pending', 'verified', 'rejected'],
+        default: 'pending'
+      },
+      verificationNotes: {
+        type: String,
+        trim: true
+      },
+      verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Clerk'
+      },
+      verifiedAt: {
+        type: Date
+      }
+    },
+    jeeResult: {
+      ...documentSchema,
+      verificationStatus: {
+        type: String,
+        enum: ['pending', 'verified', 'rejected'],
+        default: 'pending'
+      },
+      verificationNotes: {
+        type: String,
+        trim: true
+      },
+      verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Clerk'
+      },
+      verifiedAt: {
+        type: Date
+      }
+    },
+    categoryCertificate: {
+      ...documentSchema,
+      verificationStatus: {
+        type: String,
+        enum: ['pending', 'verified', 'rejected'],
+        default: 'pending'
+      },
+      verificationNotes: {
+        type: String,
+        trim: true
+      },
+      verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Clerk'
+      },
+      verifiedAt: {
+        type: Date
+      }
+    },
+    aadharCard: {
+      ...documentSchema,
+      verificationStatus: {
+        type: String,
+        enum: ['pending', 'verified', 'rejected'],
+        default: 'pending'
+      },
+      verificationNotes: {
+        type: String,
+        trim: true
+      },
+      verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Clerk'
+      },
+      verifiedAt: {
+        type: Date
+      }
+    },
+    photo: {
+      ...documentSchema,
+      verificationStatus: {
+        type: String,
+        enum: ['pending', 'verified', 'rejected'],
+        default: 'pending'
+      },
+      verificationNotes: {
+        type: String,
+        trim: true
+      },
+      verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Clerk'
+      },
+      verifiedAt: {
+        type: Date
+      }
+    },
+    signature: {
+      ...documentSchema,
+      verificationStatus: {
+        type: String,
+        enum: ['pending', 'verified', 'rejected'],
+        default: 'pending'
+      },
+      verificationNotes: {
+        type: String,
+        trim: true
+      },
+      verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Clerk'
+      },
+      verifiedAt: {
+        type: Date
+      }
+    }
   },
   
   status: {
